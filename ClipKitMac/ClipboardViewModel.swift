@@ -61,7 +61,7 @@ final class ClipboardViewModel: ObservableObject {
             guard let clipData = notification.userInfo?["clipData"] as? Data,
                   let clip = try? JSONDecoder().decode(Clip.self, from: clipData) else { return }
             Task { @MainActor in
-                await self?.store.add(clip)
+                await _ = self?.store.add(clip)
                 self?.refresh()
             }
         }
