@@ -106,35 +106,30 @@ final class ClipboardViewModel: ObservableObject {
 
     // MARK: - Data Operations
 
+    /// 从 store 拉取数据并应用当前搜索词与类型过滤
+    /// 定时刷新循环也走这里，保证搜索/过滤状态不被周期刷新覆盖
     func refresh() {
         Task {
-            let all = await store.allClips()
-            await MainActor.run {
-                self.clips = all
-            }
+            await reloadClips()
         }
     }
 
+    /// 搜索（输入框每次输入后调用；与 refresh 走同一过滤逻辑）
     func search() {
         Task {
-            let results: [Clip]
-            if searchQuery.isEmpty {
-                var all = await store.allClips()
-                if let filter = selectedFilter {
-                    all = all.filter { $0.type == filter }
-                }
-                results = all
-            } else {
-                var searched = SearchEngine.search(query: searchQuery, in: await store.allClips())
-                if let filter = selectedFilter {
-                    searched = searched.filter { $0.type == filter }
-                }
-                results = searched
-            }
-            await MainActor.run {
-                self.clips = results
-            }
+            await reloadClips()
         }
+    }
+
+    private func reloadClips() async {
+        var results = await store.allClips()
+        if !searchQuery.isEmpty {
+            results = SearchEngine.search(query: searchQuery, in: results)
+        }
+        if let filter = selectedFilter {
+            results = results.filter { $0.type == filter }
+        }
+        clips = results
     }
 
     func copyClip(_ clip: Clip) {
