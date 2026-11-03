@@ -16,6 +16,12 @@ final class ClipboardViewModel: ObservableObject {
     @Published var selectedFilter: ClipType? = nil
     @Published var isPaused: Bool = false
 
+    /// AI 增强开关（与设置页共享 UserDefaults 键）
+    @Published var aiEnabled: Bool = true {
+        didSet { UserDefaults.standard.set(aiEnabled, forKey: Self.aiEnabledKey) }
+    }
+    private static let aiEnabledKey = "clipkit.aiEnabled"
+
     private let store: ClipStore
     private var monitor: ClipboardMonitor?
     private var refreshTask: Task<Void, Never>?
@@ -23,6 +29,7 @@ final class ClipboardViewModel: ObservableObject {
     init() {
         self.store = ClipStore(maxItems: 500)
         self.monitor = ClipboardMonitor(store: store)
+        self.aiEnabled = UserDefaults.standard.value(forKey: Self.aiEnabledKey).map { $0 as? Bool ?? true } ?? true
         setupNotificationObservers()
         startMonitoring()
         loadInitialData()
@@ -63,7 +70,23 @@ final class ClipboardViewModel: ObservableObject {
             Task { @MainActor in
                 await _ = self?.store.add(clip)
                 self?.refresh()
+                self?.enrichWithAI(clip)
             }
+        }
+    }
+
+    /// 对符合条件的文本剪贴板调用 AI 增强（翻译 / JSON 格式化 / 摘要）
+    private func enrichWithAI(_ clip: Clip) {
+        guard aiEnabled else { return }
+        let textType = clip.type == .text || clip.type == .richText || clip.type == .code
+        guard textType, clip.text.count >= 15 else { return }
+
+        let systemLanguage = Locale.preferredLanguages.first ?? "en"
+        Task {
+            let result = await AIProcessor.shared.process(clip.text, systemLanguage: systemLanguage)
+            guard let result, result.kind != .none else { return }
+            await store.updateAI(id: clip.id, output: result.output, kind: result.kind.rawValue)
+            refresh()
         }
     }
 

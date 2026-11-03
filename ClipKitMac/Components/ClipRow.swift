@@ -28,6 +28,8 @@ struct StripCard: View {
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, minHeight: 52, alignment: .topLeading)
 
+            aiRow
+
             footer
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
@@ -54,12 +56,14 @@ struct StripCard: View {
             onTap()
         }
         .contextMenu {
-            Button("复制") { copyClip() }
-            Button("粘贴到当前应用") { pasteClip() }
+            Button(String(localized: "card.copy", defaultValue: "复制")) { copyClip() }
+            Button(String(localized: "card.paste", defaultValue: "粘贴到当前应用")) { pasteClip() }
             Divider()
-            Button(clip.isPinned ? "取消固定" : "固定") { togglePin() }
+            Button(clip.isPinned
+                   ? String(localized: "card.unpin", defaultValue: "取消固定")
+                   : String(localized: "card.pin", defaultValue: "固定")) { togglePin() }
             Divider()
-            Button("删除") { deleteClip() }
+            Button(String(localized: "card.delete", defaultValue: "删除")) { deleteClip() }
         }
     }
 
@@ -72,10 +76,10 @@ struct StripCard: View {
 
     private var category: Category {
         switch clip.type {
-        case .file:  return Category(name: "文件", color: .gray)
-        case .image: return Category(name: "图片", color: .purple)
-        case .link:  return Category(name: "链接", color: .red)
-        default:     return Category(name: "文本", color: .blue) // text/richText/code/email/phone/color
+        case .file:  return Category(name: String(localized: "type.file", defaultValue: "文件"), color: .gray)
+        case .image: return Category(name: String(localized: "type.image", defaultValue: "图片"), color: .purple)
+        case .link:  return Category(name: String(localized: "type.link", defaultValue: "链接"), color: .red)
+        default:     return Category(name: String(localized: "type.text", defaultValue: "文本"), color: .blue) // text/richText/code/email/phone/color
         }
     }
 
@@ -214,6 +218,46 @@ struct StripCard: View {
         }
     }
 
+    // MARK: - AI 增强结果（翻译 / JSON 格式化 / 摘要）
+
+    private var aiKind: AIKind? {
+        guard let raw = clip.aiKindRaw else { return nil }
+        return AIKind(rawValue: raw)
+    }
+
+    @ViewBuilder
+    private var aiRow: some View {
+        if let output = clip.aiOutput, let kind = aiKind, kind != .none {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 8))
+                        .foregroundColor(.accentColor)
+                    Text(aiKindLabel(kind))
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                }
+                Text(output)
+                    .font(.system(size: 9, design: kind == .formatJSON ? .monospaced : .default))
+                    .foregroundColor(.primary.opacity(0.85))
+                    .lineLimit(kind == .formatJSON ? 5 : 2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 6)
+        }
+    }
+
+    private func aiKindLabel(_ kind: AIKind) -> String {
+        switch kind {
+        case .translate:  return String(localized: "ai.translate", defaultValue: "翻译")
+        case .formatJSON: return String(localized: "ai.format", defaultValue: "JSON 格式化")
+        case .summarize:  return String(localized: "ai.summary", defaultValue: "摘要")
+        case .none:       return ""
+        }
+    }
+
     // MARK: - Footer（路径 / URL / 字符数）
 
     private var footer: some View {
@@ -238,14 +282,14 @@ struct StripCard: View {
     private var footerText: String {
         switch clip.type {
         case .file:
-            return displayPath ?? "文件"
+            return displayPath ?? String(localized: "type.file", defaultValue: "文件")
         case .image:
             // 图片优先显示存储路径，无路径时退化为类型名
-            return displayPath ?? "图片"
+            return displayPath ?? String(localized: "type.image", defaultValue: "图片")
         case .link:
             return clip.text
         default:
-            return "\(clip.size) 个字符"
+            return String(format: String(localized: "footer.characters", defaultValue: "%d 个字符"), clip.size)
         }
     }
 

@@ -18,6 +18,8 @@
 		AA000009 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100009 /* ContentView.swift */; };
 		AA000010 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100010 /* SettingsView.swift */; };
 		AA000011 /* ClipKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100011 /* ClipKitTests.swift */; };
+		AA000012 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = AA100012 /* Localizable.xcstrings */; };
+		AA000013 /* AIProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA100013 /* AIProcessor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +35,8 @@
 		AA100009 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA100010 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA100011 /* ClipKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipKitTests.swift; sourceTree = "<group>"; };
+		AA100012 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		AA100013 /* AIProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProcessor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -103,6 +107,8 @@
 			children = (
 				AA100006 /* ClipKitApp.swift */,
 				AA100007 /* ClipboardViewModel.swift */,
+				AA100013 /* AIProcessor.swift */,
+				AA100012 /* Localizable.xcstrings */,
 				AA300009 /* Views */,
 				AA300010 /* Components */,
 			);
@@ -142,6 +148,7 @@
 			buildConfigurationList = AA500000 /* Build configuration list for PBXNativeTarget "ClipKit" */;
 			buildPhases = (
 				AA600000 /* Sources */,
+				AA600001 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -167,7 +174,7 @@
 			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
-			knownRegions = ("zh-Hans", en, Base);
+			knownRegions = ("zh-Hans", en, Base, es, fr, ar);
 			mainGroup = AA300000 /* Root */;
 			productRefGroup = AA300008 /* Products */;
 			projectDirPath = "";
@@ -193,10 +200,22 @@
 				AA000008 /* ClipRow.swift in Sources */,
 				AA000009 /* ContentView.swift in Sources */,
 				AA000010 /* SettingsView.swift in Sources */,
+				AA000013 /* AIProcessor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA600001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000012 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		AA500001 /* Debug */ = {

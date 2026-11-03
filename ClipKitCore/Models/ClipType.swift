@@ -68,16 +68,16 @@ enum ClipType: String, Codable, CaseIterable, Sendable {
 
     var displayName: String {
         switch self {
-        case .text:        return "文本"
-        case .richText:    return "富文本"
-        case .link:        return "链接"
-        case .image:       return "图片"
-        case .file:        return "文件"
-        case .color:       return "颜色"
-        case .code:        return "代码"
-        case .email:       return "邮箱"
-        case .phoneNumber: return "电话"
-        case .unknown:     return "未知"
+        case .text:        return String(localized: "cliptype.text", defaultValue: "文本")
+        case .richText:    return String(localized: "cliptype.richText", defaultValue: "富文本")
+        case .link:        return String(localized: "cliptype.link", defaultValue: "链接")
+        case .image:       return String(localized: "cliptype.image", defaultValue: "图片")
+        case .file:        return String(localized: "cliptype.file", defaultValue: "文件")
+        case .color:       return String(localized: "cliptype.color", defaultValue: "颜色")
+        case .code:        return String(localized: "cliptype.code", defaultValue: "代码")
+        case .email:       return String(localized: "cliptype.email", defaultValue: "邮箱")
+        case .phoneNumber: return String(localized: "cliptype.phoneNumber", defaultValue: "电话")
+        case .unknown:     return String(localized: "cliptype.unknown", defaultValue: "未知")
         }
     }
 }

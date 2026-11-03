@@ -75,26 +75,14 @@ struct BottomBarView: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            Spacer(minLength: 0)
-
-            // 「剪贴板」= 全部记录
-            chipView(
-                title: "剪贴板",
-                colorHex: nil,
-                iconName: "clock",
-                isSelected: selectedCategoryID == nil
-            ) {
-                selectCategory(nil)
-            }
-
-            // 搜索按钮 / 输入框（放在「剪贴板」旁边）
+            // 搜索按钮 / 输入框（放在「剪贴板」左边）
             if showSearchField {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
 
-                    TextField("搜索...", text: $viewModel.searchQuery)
+                    TextField(String(localized: "search.placeholder", defaultValue: "搜索..."), text: $viewModel.searchQuery)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
                         .focused($searchFocused)
@@ -126,6 +114,10 @@ struct BottomBarView: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(Color.white.opacity(0.08))
                 )
+                .onAppear {
+                    // 输入框出现时立即聚焦光标，确保可输入
+                    searchFocused = true
+                }
             } else {
                 Button {
                     withAnimation { showSearchField = true }
@@ -139,40 +131,56 @@ struct BottomBarView: View {
                 .buttonStyle(.plain)
             }
 
-            // 用户自定义分类
-            ForEach(categories) { category in
-                chipView(
-                    title: category.name,
-                    colorHex: category.colorHex,
-                    iconName: nil,
-                    isSelected: selectedCategoryID == category.id
-                ) {
-                    selectCategory(category.id)
-                }
-                .contextMenu {
-                    Button("删除分类", role: .destructive) {
-                        deleteCategory(category)
+            // 中间可横向滚动区域：剪贴板 + 用户分类 + 加号
+            // 用 ScrollView + maxWidth 约束宽度，避免选中分类或分类过多时把导航栏撑宽
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // 「剪贴板」= 全部记录
+                    chipView(
+                        title: String(localized: "clipboard.tab", defaultValue: "剪贴板"),
+                        colorHex: nil,
+                        iconName: "clock",
+                        isSelected: selectedCategoryID == nil
+                    ) {
+                        selectCategory(nil)
+                    }
+
+                    // 用户自定义分类
+                    ForEach(categories) { category in
+                        chipView(
+                            title: category.name,
+                            colorHex: category.colorHex,
+                            iconName: nil,
+                            isSelected: selectedCategoryID == category.id
+                        ) {
+                            selectCategory(category.id)
+                        }
+                        .contextMenu {
+                            Button(String(localized: "category.delete", defaultValue: "删除分类"), role: .destructive) {
+                                deleteCategory(category)
+                            }
+                        }
+                    }
+
+                    // 加号：新增分类
+                    Button {
+                        showAddCategoryPopover = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showAddCategoryPopover) {
+                        AddCategoryView { name, type in
+                            addCategory(name: name, type: type)
+                        }
                     }
                 }
+                .padding(.vertical, 2)
             }
-
-            // 加号：新增分类
-            Button {
-                showAddCategoryPopover = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showAddCategoryPopover) {
-                AddCategoryView { name, type in
-                    addCategory(name: name, type: type)
-                }
-            }
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity)
 
             // 右上角设置：调整面板停留位置
             Button {
@@ -248,7 +256,7 @@ struct BottomBarView: View {
             categories = saved
         } else {
             // 首次启动的默认分类（对应截图中的「实用链接」）
-            categories = [ClipCategory(name: "实用链接", colorHex: ClipType.link.categoryColorHex, type: .link)]
+            categories = [ClipCategory(name: String(localized: "category.defaultName", defaultValue: "实用链接"), colorHex: ClipType.link.categoryColorHex, type: .link)]
             saveCategories()
         }
 
@@ -286,7 +294,7 @@ struct BottomBarView: View {
         let colorHex = type?.categoryColorHex
             ?? Self.newCategoryPalette[categories.count % Self.newCategoryPalette.count]
         let category = ClipCategory(
-            name: name.isEmpty ? "未命名" : name,
+            name: name.isEmpty ? String(localized: "category.unnamed", defaultValue: "未命名") : name,
             colorHex: colorHex,
             type: type
         )
@@ -307,7 +315,7 @@ struct BottomBarView: View {
 
     private var positionPicker: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("面板停留位置")
+            Text(String(localized: "position.title", defaultValue: "面板停留位置"))
                 .font(.headline)
 
             LazyVGrid(
@@ -410,7 +418,7 @@ struct BottomBarView: View {
                 Image(systemName: "tray")
                     .font(.system(size: 28))
                     .foregroundColor(.secondary.opacity(0.5))
-                Text("还没有剪贴板记录")
+                Text(String(localized: "empty.title", defaultValue: "还没有剪贴板记录"))
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
             }
@@ -512,29 +520,29 @@ private struct AddCategoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("新建分类")
+            Text(String(localized: "category.newTitle", defaultValue: "新建分类"))
                 .font(.headline)
 
-            TextField("分类名称", text: $name)
+            TextField(String(localized: "category.namePlaceholder", defaultValue: "分类名称"), text: $name)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 13))
 
-            Picker("类型过滤", selection: $selectedType) {
+            Picker(String(localized: "category.typeFilter", defaultValue: "类型过滤"), selection: $selectedType) {
                 ForEach(typeOptions, id: \.self) { type in
-                    Text(type?.displayName ?? "全部内容")
+                    Text(type?.displayName ?? String(localized: "category.allContent", defaultValue: "全部内容"))
                         .tag(type as ClipType?)
                 }
             }
             .pickerStyle(.menu)
 
-            Text("分类按内容类型过滤记录；选「全部内容」则不过滤。")
+            Text(String(localized: "category.hint", defaultValue: "分类按内容类型过滤记录；选「全部内容」则不过滤。"))
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
 
             HStack {
                 Spacer()
-                Button("取消") { dismiss() }
-                Button("添加") {
+                Button(String(localized: "category.cancel", defaultValue: "取消")) { dismiss() }
+                Button(String(localized: "category.addButton", defaultValue: "添加")) {
                     onAdd(name, selectedType)
                     dismiss()
                 }

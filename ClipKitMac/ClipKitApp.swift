@@ -20,10 +20,10 @@ enum PanelPosition: String, CaseIterable, Identifiable {
     /// 用户可见名称
     var displayName: String {
         switch self {
-        case .bottom: "下侧"
-        case .top:    "上侧"
-        case .left:   "左侧"
-        case .right:  "右侧"
+        case .bottom: String(localized: "position.bottom", defaultValue: "下侧")
+        case .top:    String(localized: "position.top", defaultValue: "上侧")
+        case .left:   String(localized: "position.left", defaultValue: "左侧")
+        case .right:  String(localized: "position.right", defaultValue: "右侧")
         }
     }
 
@@ -230,13 +230,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Create Panel
 
     @MainActor private func createPanel() {
-        let panel = NSPanel(
+        let panel = ClipKitPanel(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 200),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
+        // 点击面板任意位置即可成为 key window，TextField 才能聚焦输入
+        panel.becomesKeyOnlyIfNeeded = false
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -253,7 +255,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.hidePanel()
         }
         let hostingView = NSHostingView(rootView: contentView)
-        panel.contentView = hostingView
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+
+        // 用容器 NSView 包住 hostingView，并把 hostingView 四边钉到面板内容区。
+        // 否则 NSHostingView 的 intrinsicContentSize 会让窗口去"贴合"内容尺寸，
+        // 导致点击分类等触发重新布局时面板被内容反向撑宽。
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        panel.contentView = container
+        container.addSubview(hostingView)
+        NSLayoutConstraint.activate([
+            hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            hostingView.topAnchor.constraint(equalTo: container.topAnchor),
+            hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
 
         self.panel = panel
     }
@@ -276,9 +292,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Status Bar Icon Flash
 
     /// 检测到复制动作后，让菜单栏图标闪一下
-    @MainActor private func flashStatusBarIcon() {
+    @MainActor     private func flashStatusBarIcon() {
         guard let button = statusItem.button else { return }
-
         let normal = NSImage(
             systemSymbolName: "clipboard",
             accessibilityDescription: "ClipKit"
@@ -292,11 +307,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         button.contentTintColor = .systemBlue
         button.image = filled
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let button = self?.statusItem.button else { return }
             button.image = normal
             button.contentTintColor = nil
         }
     }
+}
+
+// MARK: - 面板：允许点击时成为 key，从而让 TextField 能聚焦输入
+
+private final class ClipKitPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 }
 
 extension Notification.Name {

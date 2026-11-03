@@ -18,6 +18,10 @@ struct Clip: Identifiable, Codable, Hashable, Sendable {
     var payloadData: Data?    // 图片缩略图数据（用于列表快速预览）
     var size: Int             // 内容大小（字节）
 
+    // AI 增强结果（苹果原生 Foundation Models 处理）
+    var aiOutput: String?     // AI 处理后的文本（翻译/格式化 JSON/摘要）
+    var aiKindRaw: String?    // AI 动作类型（AIKind.rawValue）
+
     // 搜索辅助
     var searchText: String {   // 拼音搜索支持的基础文本
         text.lowercased()

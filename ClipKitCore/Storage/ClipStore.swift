@@ -113,6 +113,15 @@ final actor ClipStore {
     /// 记录数
     var count: Int { clips.count }
 
+    /// 写入 AI 处理结果
+    func updateAI(id: UUID, output: String, kind: String) {
+        if let idx = clips.firstIndex(where: { $0.id == id }) {
+            clips[idx].aiOutput = output
+            clips[idx].aiKindRaw = kind
+            save()
+        }
+    }
+
     // MARK: - Private
 
     private func ensureDirectory() {
