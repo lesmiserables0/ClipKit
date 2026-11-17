@@ -192,19 +192,21 @@ struct StripCard: View {
 
         } else if clip.type == .link {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 3) {
-                    Image(systemName: "link")
-                        .font(.system(size: 8))
-                        .foregroundColor(category.color)
-                    Text(extractDomain(from: clip.text))
-                        .font(.system(size: 9))
-                        .foregroundColor(category.color)
-                        .lineLimit(1)
+                if AppPreferences.generateLinkPreviews {
+                    HStack(spacing: 3) {
+                        Image(systemName: "link")
+                            .font(.system(size: 8))
+                            .foregroundColor(category.color)
+                        Text(extractDomain(from: clip.text))
+                            .font(.system(size: 9))
+                            .foregroundColor(category.color)
+                            .lineLimit(1)
+                    }
                 }
                 Text(clip.previewText)
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(AppPreferences.generateLinkPreviews ? 2 : 4)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
 

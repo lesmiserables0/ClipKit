@@ -57,16 +57,18 @@ struct ClipKitApp: App {
 
 // MARK: - AppDelegate: 菜单栏 + 全局快捷键 + 底部面板
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
 
     @MainActor lazy var viewModel = ClipboardViewModel()
     private var statusItem: NSStatusItem!
+    private var statusMenu: NSMenu?
     private var panel: NSPanel?
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBar()
+        setupStatusMenu()
         setupGlobalHotkey()
         setupNotificationObservers()
         setupFlashObserver()
@@ -95,16 +97,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             name: .clipKitRepositionPanel,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePreferencesChanged),
+            name: .clipKitPreferencesChanged,
+            object: nil
+        )
     }
 
     @MainActor @objc private func handleNewClipNotification() {
         flashStatusBarIcon()
+        if AppPreferences.soundEnabled {
+            NSSound(named: "Pop")?.play()
+        }
     }
 
     @MainActor @objc private func handleRepositionNotification() {
         if let panel = panel {
             positionPanel(panel)
         }
+    }
+
+    @MainActor @objc private func handlePreferencesChanged() {
+        guard let panel else { return }
+        panel.sharingType = AppPreferences.showDuringScreenSharing ? .readOnly : .none
+        positionPanel(panel)
     }
 
     @MainActor @objc func togglePanelFromNotification() {
@@ -121,16 +138,142 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 systemSymbolName: "clipboard",
                 accessibilityDescription: "ClipKit"
             )
-            button.action = #selector(togglePanel)
+            button.action = #selector(handleStatusItemClick(_:))
             button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
+    }
+
+    @MainActor @objc private func handleStatusItemClick(_ sender: Any?) {
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
+            showStatusMenu()
+        } else {
+            togglePanel()
+        }
+    }
+
+    // MARK: - Status Bar Menu（关于 / 设置 / 停留位置 / 退出）
+
+    @MainActor
+    private func setupStatusMenu() {
+        let menu = NSMenu()
+        menu.delegate = self
+
+        let openItem = NSMenuItem(
+            title: String(localized: "menu.open", defaultValue: "打开 ClipKit"),
+            action: #selector(togglePanel),
+            keyEquivalent: ""
+        )
+        openItem.target = self
+        menu.addItem(openItem)
+        menu.addItem(.separator())
+
+        let aboutItem = NSMenuItem(
+            title: String(localized: "menu.about", defaultValue: "关于 ClipKit"),
+            action: #selector(showAboutPanel),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
+        let settingsItem = NSMenuItem(
+            title: String(localized: "menu.settings", defaultValue: "设置…"),
+            action: #selector(openSettingsWindow),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        let positionItem = NSMenuItem(
+            title: String(localized: "menu.position", defaultValue: "停留位置"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        let positionMenu = NSMenu()
+        for position in PanelPosition.allCases {
+            let item = NSMenuItem(
+                title: position.displayName,
+                action: #selector(selectPanelPosition(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = position.rawValue
+            positionMenu.addItem(item)
+        }
+        positionItem.submenu = positionMenu
+        menu.addItem(positionItem)
+        menu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: String(localized: "menu.quit", defaultValue: "退出 ClipKit"),
+            action: #selector(quitApplication),
+            keyEquivalent: "q"
+        )
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        self.statusMenu = menu
+    }
+
+    @MainActor
+    private func showStatusMenu() {
+        guard let menu = statusMenu, let button = statusItem.button else { return }
+        refreshStatusMenuStates()
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: 0, y: button.bounds.height + 4),
+            in: button
+        )
+    }
+
+    @MainActor
+    private func refreshStatusMenuStates() {
+        let current = UserDefaults.standard.string(forKey: AppDelegate.panelPositionKey)
+            ?? PanelPosition.bottom.rawValue
+        guard let positionItem = statusMenu?.items.first(where: {
+            $0.title == String(localized: "menu.position", defaultValue: "停留位置")
+        }), let submenu = positionItem.submenu else { return }
+
+        for item in submenu.items {
+            item.state = (item.representedObject as? String) == current ? .on : .off
+        }
+    }
+
+    @MainActor @objc private func showAboutPanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(nil)
+    }
+
+    @MainActor @objc private func openSettingsWindow() {
+        hidePanel()
+        NSApp.activate(ignoringOtherApps: true)
+        // SwiftUI 的 Settings scene 在 macOS 14 上响应 showSettingsWindow:。
+        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+    }
+
+    @MainActor @objc private func selectPanelPosition(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              PanelPosition(rawValue: raw) != nil else { return }
+        UserDefaults.standard.set(raw, forKey: AppDelegate.panelPositionKey)
+        NotificationCenter.default.post(name: .clipKitRepositionPanel, object: nil)
+    }
+
+    @MainActor @objc private func quitApplication() {
+        NSApp.terminate(nil)
     }
 
     // MARK: - Global Hotkey (⇧⌘V)
 
     private func setupGlobalHotkey() {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
-            if event.modifierFlags.contains([.command, .shift]) && event.keyCode == 9 {
+            let hotkey = AppPreferences.openHotkey
+            let flags = event.modifierFlags
+                .intersection(.deviceIndependentFlagsMask)
+                .intersection([.command, .shift, .option, .control])
+            if event.keyCode == hotkey.keyCode && flags.rawValue == hotkey.modifiersRawValue {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .clipKitTogglePanel, object: nil)
                 }
@@ -138,8 +281,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if event.modifierFlags.contains([.command, .shift]) && event.keyCode == 9 {
+            let hotkey = AppPreferences.openHotkey
+            let flags = event.modifierFlags
+                .intersection(.deviceIndependentFlagsMask)
+                .intersection([.command, .shift, .option, .control])
+            if event.keyCode == hotkey.keyCode && flags.rawValue == hotkey.modifiersRawValue {
                 NotificationCenter.default.post(name: .clipKitTogglePanel, object: nil)
+                return nil
+            }
+
+            // 面板显示时支持 ⌘1…⌘9 快速粘贴对应卡片。
+            // 通过通知交给 BottomBarView 判断是否有对应索引，避免在监听到
+            // 键盘事件时跨隔离域访问 AppKit 窗口状态。
+            if event.modifierFlags.contains(.command),
+               let character = event.charactersIgnoringModifiers,
+               let number = Int(character),
+               (1...9).contains(number) {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .clipKitQuickPaste,
+                        object: nil,
+                        userInfo: ["index": number - 1]
+                    )
+                }
                 return nil
             }
             return event
@@ -181,8 +345,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// - 左/右：高度达到屏幕高度（竖向卡片条）
     @MainActor private func positionPanel(_ panel: NSPanel) {
         guard let screen = NSScreen.main else { return }
+        // 面板铺满屏幕可见区域：上/下停靠使用全宽，左/右停靠使用全高。
         let screenFrame = screen.visibleFrame
-        let margin: CGFloat = 16
 
         let position = PanelPosition(
             rawValue: UserDefaults.standard.string(forKey: Self.panelPositionKey) ?? ""
@@ -195,25 +359,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         switch position {
         case .bottom:
-            width = screenFrame.width - margin * 2
+            width = screenFrame.width
             height = 200
-            x = screenFrame.minX + margin
-            y = screenFrame.minY + margin
+            x = screenFrame.minX
+            y = screenFrame.minY
         case .top:
-            width = screenFrame.width - margin * 2
+            width = screenFrame.width
             height = 200
-            x = screenFrame.minX + margin
-            y = screenFrame.maxY - height - margin
+            x = screenFrame.minX
+            y = screenFrame.maxY - height
         case .left:
             width = 360
-            height = screenFrame.height - margin * 2
-            x = screenFrame.minX + margin
-            y = screenFrame.minY + margin
+            height = screenFrame.height
+            x = screenFrame.minX
+            y = screenFrame.minY
         case .right:
             width = 360
-            height = screenFrame.height - margin * 2
-            x = screenFrame.maxX - width - margin
-            y = screenFrame.minY + margin
+            height = screenFrame.height
+            x = screenFrame.maxX - width
+            y = screenFrame.minY
         }
 
         panel.setFrame(
@@ -246,6 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.hidesOnDeactivate = true
+        panel.sharingType = AppPreferences.showDuringScreenSharing ? .readOnly : .none
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovable = false
@@ -326,6 +491,8 @@ extension Notification.Name {
     static let clipKitTogglePanel = Notification.Name("clipKitTogglePanel")
     static let clipKitRepositionPanel = Notification.Name("clipKitRepositionPanel")
     static let clipKitPanelDidShow = Notification.Name("clipKitPanelDidShow")
+    static let clipKitOpenSettings = Notification.Name("clipKitOpenSettings")
+    static let clipKitQuickPaste = Notification.Name("clipKitQuickPaste")
 }
 
 extension AppDelegate {

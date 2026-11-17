@@ -1,4 +1,5 @@
 #if canImport(AppKit)
+import AppKit
 import SwiftUI
 
 /// 底部悬浮面板主视图
@@ -18,7 +19,7 @@ struct BottomBarView: View {
 
     /// 面板停留位置（与 AppDelegate 共享 UserDefaults 键）
     @AppStorage("clipkit.panelPosition") private var positionRaw = PanelPosition.bottom.rawValue
-    @State private var showPositionPicker = false
+    @Environment(\.openSettings) private var openSettings
 
     // 分类（chip）：剪贴板 = 全部，其余为用户自定义分类
     @State private var categories: [ClipCategory] = []
@@ -61,6 +62,10 @@ struct BottomBarView: View {
             showSearchField = false
             searchFocused = true
             selectedIndex = 0
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clipKitQuickPaste)) { notification in
+            guard let index = notification.userInfo?["index"] as? Int else { return }
+            pasteClip(at: index)
         }
         .onKeyPress(.escape) {
             onClose()
@@ -182,18 +187,55 @@ struct BottomBarView: View {
             }
             .frame(maxWidth: .infinity)
 
-            // 右上角设置：调整面板停留位置
-            Button {
-                showPositionPicker.toggle()
+            // 右上角设置菜单：关于 / 设置 / 停留位置 / 退出
+            Menu {
+                Button {
+                    NSApp.activate(ignoringOtherApps: true)
+                    NSApp.orderFrontStandardAboutPanel(nil)
+                } label: {
+                    Label(String(localized: "menu.about", defaultValue: "关于 ClipKit"), systemImage: "info.circle")
+                }
+
+                Button {
+                    openSettings()
+                } label: {
+                    Label(String(localized: "menu.settings", defaultValue: "设置…"), systemImage: "gearshape")
+                }
+
+                Menu {
+                    ForEach(PanelPosition.allCases) { p in
+                        Button {
+                            positionRaw = p.rawValue
+                        } label: {
+                            if position == p {
+                                Label(p.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(p.displayName)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(String(localized: "menu.position", defaultValue: "停留位置"), systemImage: "rectangle.on.rectangle")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    NSApp.terminate(nil)
+                } label: {
+                    Label(String(localized: "menu.quit", defaultValue: "退出 ClipKit"), systemImage: "power")
+                }
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showPositionPicker) {
-                positionPicker
-            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(String(localized: "menu.settings.help", defaultValue: "设置"))
 
             Button {
                 onClose()
@@ -311,45 +353,6 @@ struct BottomBarView: View {
         }
     }
 
-    // MARK: - Position Picker (右上角设置)
-
-    private var positionPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(String(localized: "position.title", defaultValue: "面板停留位置"))
-                .font(.headline)
-
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 10
-            ) {
-                ForEach(PanelPosition.allCases) { p in
-                    Button {
-                        positionRaw = p.rawValue
-                        showPositionPicker = false
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: p.icon)
-                                .font(.system(size: 18))
-                            Text(p.displayName)
-                                .font(.system(size: 11))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(10)
-                        .background(
-                            position == p
-                            ? Color.accentColor.opacity(0.25)
-                            : Color.gray.opacity(0.12)
-                        )
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
-        .frame(width: 200)
-    }
-
     // MARK: - Card Strip (横/竖滚动随位置)
 
     private var cardStrip: some View {
@@ -363,12 +366,12 @@ struct BottomBarView: View {
                                 isSelected: index == selectedIndex,
                                 isVertical: true,
                                 onTap: {
+                                    // 单击只负责选中并高亮，不写入剪贴板。
                                     selectedIndex = index
-                                    selectCurrent()
                                 },
                                 onDoubleClick: {
                                     selectedIndex = index
-                                    selectCurrent()
+                                    copyClip(at: index)
                                 }
                             )
                             .id(clip.id)
@@ -384,12 +387,12 @@ struct BottomBarView: View {
                                 isSelected: index == selectedIndex,
                                 isVertical: false,
                                 onTap: {
+                                    // 单击只负责选中并高亮，不写入剪贴板。
                                     selectedIndex = index
-                                    selectCurrent()
                                 },
                                 onDoubleClick: {
                                     selectedIndex = index
-                                    selectCurrent()
+                                    copyClip(at: index)
                                 }
                             )
                             .id(clip.id)
@@ -429,9 +432,27 @@ struct BottomBarView: View {
 
     // MARK: - Actions
 
+    /// 回车：按设置页的粘贴方式处理当前选中项。
     private func selectCurrent() {
         guard selectedIndex < viewModel.clips.count else { return }
         let clip = viewModel.clips[selectedIndex]
+        viewModel.copyAndPaste(clip)
+        onClose()
+    }
+
+    /// 双击：只把内容复制到系统剪贴板，不模拟 Cmd+V。
+    private func copyClip(at index: Int) {
+        guard viewModel.clips.indices.contains(index) else { return }
+        let clip = viewModel.clips[index]
+        viewModel.copyToClipboard(clip)
+        onClose()
+    }
+
+    /// ⌘1…⌘9：直接按设置页中的粘贴方式处理对应卡片。
+    private func pasteClip(at index: Int) {
+        guard viewModel.clips.indices.contains(index) else { return }
+        selectedIndex = index
+        let clip = viewModel.clips[index]
         viewModel.copyAndPaste(clip)
         onClose()
     }

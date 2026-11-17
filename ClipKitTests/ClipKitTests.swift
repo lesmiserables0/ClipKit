@@ -124,3 +124,47 @@ final class SearchEngineTests: XCTestCase {
         XCTAssertTrue(pinyin.contains("jian") || pinyin.contains("jian tie ban") || !pinyin.isEmpty)
     }
 }
+
+
+final class ContentHashDeduplicationTests: XCTestCase {
+
+    func testContentHashIsStableForSameContent() {
+        let first = Clip(text: "same content", type: .text, sourceApp: "com.one")
+        let second = Clip(text: "same content", type: .text, sourceApp: "com.two")
+        XCTAssertEqual(first.contentHash, second.contentHash)
+    }
+
+    func testContentHashChangesWithContent() {
+        let first = Clip(text: "same content", type: .text)
+        let second = Clip(text: "different content", type: .text)
+        XCTAssertNotEqual(first.contentHash, second.contentHash)
+    }
+
+    func testContentHashIncludesImagePayload() {
+        let first = Clip(text: "", type: .image, payloadData: Data([0, 1, 2]))
+        let second = Clip(text: "", type: .image, payloadData: Data([0, 1, 3]))
+        XCTAssertNotEqual(first.contentHash, second.contentHash)
+    }
+
+    func testStoreRejectsDuplicateHashAnywhereInHistory() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClipKitTests-\(UUID().uuidString)", isDirectory: true)
+        let storageURL = directory.appendingPathComponent("clips.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let store = ClipStore(maxItems: 100, storageURL: storageURL)
+        let first = Clip(text: "duplicate", type: .text, sourceApp: "com.one")
+        let second = Clip(text: "duplicate", type: .text, sourceApp: "com.two")
+        let third = Clip(text: "different", type: .text)
+
+        let firstInserted = await store.add(first)
+        let duplicateInserted = await store.add(second)
+        let thirdInserted = await store.add(third)
+
+        let count = await store.allClips().count
+        XCTAssertNotNil(firstInserted)
+        XCTAssertNil(duplicateInserted)
+        XCTAssertNotNil(thirdInserted)
+        XCTAssertEqual(count, 2)
+    }
+}

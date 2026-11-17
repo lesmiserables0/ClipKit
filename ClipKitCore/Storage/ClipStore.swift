@@ -11,22 +11,26 @@ final actor ClipStore {
 
     // MARK: - Properties
 
-    private let maxItems: Int
+    private var maxItems: Int
     private var clips: [Clip] = []
     private let storageURL: URL
 
     // MARK: - Init
 
-    init(maxItems: Int = 500) {
+    init(maxItems: Int = 500, storageURL: URL? = nil) {
         self.maxItems = maxItems
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let clipKitDir = appSupport.appendingPathComponent("ClipKit", isDirectory: true)
-        self.storageURL = clipKitDir.appendingPathComponent("clips.json")
+        if let storageURL {
+            self.storageURL = storageURL
+        } else {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let clipKitDir = appSupport.appendingPathComponent("ClipKit", isDirectory: true)
+            self.storageURL = clipKitDir.appendingPathComponent("clips.json")
+        }
         // actor init 中不能调用 isolated 方法，直接内联
-        let dir = storageURL.deletingLastPathComponent()
+        let dir = self.storageURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        if FileManager.default.fileExists(atPath: storageURL.path) {
-            if let data = try? Data(contentsOf: storageURL) {
+        if FileManager.default.fileExists(atPath: self.storageURL.path) {
+            if let data = try? Data(contentsOf: self.storageURL) {
                 clips = (try? JSONDecoder().decode([Clip].self, from: data)) ?? []
             }
         }
@@ -34,16 +38,17 @@ final actor ClipStore {
 
     // MARK: - Public API
 
-    /// 添加一条剪贴板记录（自动去重）
+    /// 添加一条剪贴板记录（按内容哈希全局去重）
     /// - Returns: 新增的 Clip（如果成功），nil 表示重复被忽略
     func add(_ clip: Clip) -> Clip? {
-        // 去重：如果最近一条内容完全相同，跳过
-        if let last = clips.first(where: { !$0.isPinned }),
-           last.text == clip.text {
+        // 去重：不依赖 UUID / 来源 / 时间，只比较实际内容指纹。
+        // 这样从 ClipKit 重新复制同一内容时也不会产生重复记录。
+        if clips.contains(where: { $0.contentHash == clip.contentHash }) {
             return nil
         }
 
         clips.insert(clip, at: 0)
+        pruneExpired()
         enforceLimit()
         save()
         return clip
@@ -87,7 +92,7 @@ final actor ClipStore {
         save()
     }
 
-    /// 清空所有（保留固定的）
+    /// 清空所有（可保留固定的）
     func clearAll(keepPinned: Bool = true) {
         if keepPinned {
             clips = clips.filter(\.isPinned)
@@ -95,6 +100,30 @@ final actor ClipStore {
             clips.removeAll()
         }
         save()
+    }
+
+    /// 应用设置页中的记录上限与保留期限。
+    /// 仅在配置变化时落盘，避免刷新循环频繁写文件。
+    func applyPreferences(maxItems: Int, retentionDays: Int) {
+        let newMaxItems = max(1, maxItems)
+        let configChanged = newMaxItems != self.maxItems || retentionDays != appliedRetentionDays
+        self.maxItems = newMaxItems
+        self.appliedRetentionDays = retentionDays
+        self.retentionDays = retentionDays
+
+        guard configChanged else { return }
+        pruneExpired()
+        enforceLimit()
+        save()
+    }
+
+    /// 删除超过保留期限的未固定记录。
+    func pruneExpired(now: Date = Date()) {
+        guard retentionDays > 0,
+              let cutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: now) else {
+            return
+        }
+        clips.removeAll { !$0.isPinned && $0.createdAt < cutoff }
     }
 
     /// 固定/取消固定
@@ -148,6 +177,9 @@ final actor ClipStore {
             // 存储失败，静默处理（生产环境应加日志）
         }
     }
+
+    private var retentionDays: Int = 0
+    private var appliedRetentionDays: Int = -1
 
     private func enforceLimit() {
         // 只裁剪非固定的记录

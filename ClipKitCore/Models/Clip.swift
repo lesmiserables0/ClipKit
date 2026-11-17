@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// 剪贴板记录模型
 ///
@@ -53,6 +54,26 @@ struct Clip: Identifiable, Codable, Hashable, Sendable {
         self.bundlePath = bundlePath
         self.payloadData = payloadData
         self.size = size > 0 ? size : text.utf8.count
+    }
+
+    /// 内容指纹（用于去重）。
+    ///
+    /// 哈希同时涵盖内容类型、文本以及图片/文件载荷，因此即使两条记录的
+    /// UUID 或来源应用不同，只要实际剪贴板内容一致就会被判定为重复。
+    var contentHash: String {
+        var hasher = SHA256()
+        hasher.update(data: Data(type.rawValue.utf8))
+        hasher.update(data: Data([0]))
+        hasher.update(data: Data(text.utf8))
+        if let payloadData {
+            hasher.update(data: Data([0]))
+            hasher.update(data: payloadData)
+        }
+        if let bundlePath {
+            hasher.update(data: Data([0]))
+            hasher.update(data: Data(bundlePath.utf8))
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// 用于列表显示的预览文本（截断）
